@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.h5
+*.joblib
+src/data/
+.env
+.vscode/
+.ipynb_checkpoints/
