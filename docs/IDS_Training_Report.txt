@@ -1,0 +1,81 @@
+
+╔══════════════════════════════════════════════════════════╗
+║       INTELLIGENT IDS — COMPLETE TRAINING REPORT        ║
+╚══════════════════════════════════════════════════════════╝
+
+Generated   : 2026-04-18 17:43:03
+Dataset     : UNSW-NB15 (pre-labeled, with headers)
+Institute   : Vishwakarma Institute of Technology, Pune
+Branch      : AI and Data Science — BTech Second Year
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATASET SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Total classes (trained): 6
+Class names             : dos, exploits, fuzzers, generic, normal, reconnaissance
+Classes dropped         : analysis, backdoor, shellcode (< 500 samples)
+Features used           : 33 (after correlation filter)
+Latent dim (encoder)    : 16
+Train samples           : 193,124
+Test  samples           : 64,375
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+AUTOENCODER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Architecture        : Input → 64 → 32 → 16 (latent) → 32 → 64 → Output
+Trained on          : Normal traffic only
+Anomaly threshold   : 0.104828  (95th percentile of normal error)
+Mean error (Normal) : 0.030419
+Mean error (Attack) : 0.329483
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BINARY XGBOOST (Normal vs Attack)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Accuracy            : 89.21%
+
+              precision    recall  f1-score   support
+
+      Normal       0.80      0.93      0.86     23250
+      Attack       0.96      0.87      0.91     41125
+
+    accuracy                           0.89     64375
+   macro avg       0.88      0.90      0.89     64375
+weighted avg       0.90      0.89      0.89     64375
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+MULTICLASS XGBOOST (6 Attack Types)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Accuracy            : 81.68%
+
+                precision    recall  f1-score   support
+
+           dos       0.38      0.82      0.52      4088
+      exploits       0.85      0.54      0.66     11131
+       fuzzers       0.59      0.67      0.63      6062
+       generic       1.00      0.98      0.99     14718
+        normal       0.93      0.88      0.91     23250
+reconnaissance       0.85      0.81      0.83      3497
+
+      accuracy                           0.82     62746
+     macro avg       0.77      0.78      0.76     62746
+  weighted avg       0.86      0.82      0.83     62746
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SAVED MODEL FILES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+scaler.joblib              — Feature scaler (StandardScaler)
+autoencoder_xg_model.h5   — Full autoencoder
+encoder_model.h5           — Encoder only (feature extraction)
+xgb_model.joblib           — Binary XGBoost
+xgb_multiclass.joblib      — Multiclass XGBoost  ← MAIN MODEL
+le_label.joblib            — Label encoder (class names mapping)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PIPELINE FLOW
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Raw CSV → Preprocessing → Scaler (33 features)
+       → Encoder (16-dim latent) → Binary XGBoost
+       → Multiclass XGBoost (6 attack types)
+       → Risk Engine + XAI + Path Predictor → FastAPI

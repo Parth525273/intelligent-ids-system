@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Intelligent IDS System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+        :root {
+            --bg:        #070b14;
+            --bg2:       #0d1220;
+            --bg3:       #121828;
+            --border:    #1e2a40;
+            --border2:   #263348;
+            --cyan:      #00d4ff;
+            --cyan-dim:  rgba(0,212,255,0.15);
+            --green:     #00ff88;
+            --red:       #ff3d5a;
+            --orange:    #ff7043;
+            --yellow:    #ffd740;
+            --purple:    #b388ff;
+            --text:      #c8d6e8;
+            --text-dim:  #5a7090;
+            --font-mono: 'JetBrains Mono', monospace;
+            --font-ui:   'Rajdhani', sans-serif;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: var(--font-ui);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Scanline overlay ── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px
+            );
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* ── Header ── */
+        .header {
+            background: linear-gradient(90deg, #060c1a 0%, #0a1628 50%, #060c1a 100%);
+            padding: 0 40px;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header::after {
+            content: '';
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 36px; height: 36px;
+            background: var(--cyan-dim);
+            border: 1px solid var(--cyan);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        .logo-text h1 {
+            font-family: var(--font-ui);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--cyan);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .logo-text p {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            letter-spacing: 1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-dot {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--green);
+        }
+
+        .status-dot::before {
+            content: '';
+            width: 8px; height: 8px;
+            background: var(--green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse-dot 2s infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 8px var(--green); }
+            50% { opacity: 0.6; box-shadow: 0 0 3px var(--green); }
+        }
+
+        /* ── Stats Bar ── */
+        .stats-bar {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            border-bottom: 1px solid var(--border);
+            background: var(--bg2);
+        }
+
+        .stat {
+            padding: 14px 28px;
+            border-right: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--cyan);
+            transform: scaleX(0);
+            transition: transform 0.4s;
+        }
+
+        .stat.active::before { transform: scaleX(1); }
+
+        .stat-val {
+            font-family: var(--font-mono);
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--cyan);
+            line-height: 1;
+        }
+
+        .stat-val.red    { color: var(--red); }
+        .stat-val.orange { color: var(--orange); }
+        .stat-val.green  { color: var(--green); }
+
+        .stat-lbl {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 4px;
+        }
+
+        /* ── Main Layout ── */
+        .main {
+            padding: 24px 32px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        /* ── Top Row ── */
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        .card-title {
+            font-family: var(--font-ui);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--cyan);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ── Upload Zone ── */
+        .upload-zone {
+            border: 1px dashed var(--border2);
+            border-radius: 8px;
+            padding: 32px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg3);
+        }
+
+        .upload-zone:hover, .upload-zone.drag {
+            border-color: var(--cyan);
+            background: var(--cyan-dim);
+        }
+
+        .upload-zone .icon { font-size: 36px; margin-bottom: 8px; }
+        .upload-zone p { font-size: 13px; color: var(--text-dim); }
+        .upload-zone small { font-size: 11px; color: #3a5070; margin-top: 4px; display: block; }
+
+        #fileInput { display: none; }
+
+        .file-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        .file-name {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-dim);
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            padding: 8px 20px;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            transition: all 0.15s;
+            text-transform: uppercase;
+        }
+
+        .btn-cyan  { background: var(--cyan); color: #000; }
+        .btn-cyan:hover  { background: #00b8d9; transform: translateY(-1px); }
+        .btn-red   { background: var(--red); color: #fff; }
+        .btn-red:hover   { opacity: 0.85; }
+        .btn-ghost {
+            background: transparent;
+            border: 1px solid var(--border2);
+            color: var(--text-dim);
+        }
+        .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); }
+
+        /* ── Simulation Grid ── */
+        .sim-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .sim-btn {
+            padding: 10px 8px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg3);
+            color: var(--text);
+            cursor: pointer;
+            text-align: center;
+            font-family: var(--font-ui);
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            transition: all 0.15s;
+        }
+
+        .sim-btn:hover { transform: translateY(-2px); }
+        .sim-btn.dos:hover        { border-color: var(--red);    color: var(--red);    background: rgba(255,61,90,0.08); }
+        .sim-btn.exploits:hover   { border-color: var(--orange);  color: var(--orange);  background: rgba(255,112,67,0.08); }
+        .sim-btn.fuzzers:hover    { border-color: var(--yellow); color: var(--yellow); background: rgba(255,215,64,0.08); }
+        .sim-btn.generic:hover    { border-color: var(--purple); color: var(--purple); background: rgba(179,136,255,0.08); }
+        .sim-btn.recon:hover      { border-color: #ffaa33; color: #ffaa33; background: rgba(255,170,51,0.08); }
+        .sim-btn.normal:hover     { border-color: var(--green);  color: var(--green);  background: rgba(0,255,136,0.08); }
+
+        .sim-btn .dot { font-size: 10px; margin-right: 4px; }
+        .sim-btn small { display: block; font-size: 10px; color: var(--text-dim); font-weight: 400; margin-top: 2px; }
+
+        .seq-btn {
+            width: 100%;
+            padding: 10px;
+            background: linear-gradient(135deg, #1a0a0f, #0f1a2a);
+            border: 1px solid rgba(255,61,90,0.3);
+            border-radius: 6px;
+            color: var(--red);
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            transition: all 0.2s;
+        }
+
+        .seq-btn:hover {
+            background: linear-gradient(135deg, #2a0f18, #1a2a3a);
+            border-color: var(--red);
+            box-shadow: 0 0 20px rgba(255,61,90,0.2);
+        }
+
+        /* ── Charts Row ── */
+        .charts-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+            min-height: 280px;
+}
+
+        .chart-wrap {
+            position: relative;
+            height: 200px;
+            width: 100%;
+}
+
+        .chart-wrap canvas {
+            position: absolute;
+            inset: 0;
+}
+
+        /* ── Results Section ── */
+        .results-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .results-actions { display: flex; gap: 8px; }
+
+        /* ── Table ── */
+        .table-wrap {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+        thead {
+            background: #0a1220;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            padding: 12px 16px;
+            text-align: left;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background 0.15s;
+            cursor: pointer;
+        }
+
+        tbody tr:hover { background: rgba(0,212,255,0.04); }
+        tbody tr:last-child { border-bottom: none; }
+
+        td {
+            padding: 12px 16px;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+
+        .ip {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: #6699cc;
+        }
+
+        /* ── Badges ── */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        .b-dos            { background: rgba(255,61,90,0.15);  color: #ff3d5a; border: 1px solid rgba(255,61,90,0.3); }
+        .b-exploits       { background: rgba(255,112,67,0.15); color: #ff7043; border: 1px solid rgba(255,112,67,0.3); }
+        .b-fuzzers        { background: rgba(255,215,64,0.15); color: #ffd740; border: 1px solid rgba(255,215,64,0.3); }
+        .b-generic        { background: rgba(179,136,255,0.15);color: #b388ff; border: 1px solid rgba(179,136,255,0.3); }
+        .b-reconnaissance { background: rgba(255,170,51,0.15); color: #ffaa33; border: 1px solid rgba(255,170,51,0.3); }
+        .b-normal         { background: rgba(0,255,136,0.15);  color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
+
+        .b-critical { background: rgba(255,0,0,0.15);    color: #ff3333; border: 1px solid rgba(255,0,0,0.3); }
+        .b-high     { background: rgba(255,61,90,0.15);  color: #ff3d5a; border: 1px solid rgba(255,61,90,0.3); }
+        .b-medium   { background: rgba(255,167,38,0.15); color: #ffa726; border: 1px solid rgba(255,167,38,0.3); }
+        .b-low      { background: rgba(255,215,64,0.15); color: #ffd740; border: 1px solid rgba(255,215,64,0.3); }
+        .b-safe     { background: rgba(0,255,136,0.15);  color: #00ff88; border: 1px solid rgba(0,255,136,0.3); }
+
+        /* ── Confidence bar ── */
+        .conf-wrap { display: flex; align-items: center; gap: 8px; }
+        .conf-bar { width: 80px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+        .conf-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+        .conf-val { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
+
+        /* ── Row actions ── */
+        .row-actions { display: flex; gap: 6px; }
+
+        .btn-view {
+            padding: 4px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--cyan);
+            background: transparent;
+            color: var(--cyan);
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 10px;
+            transition: all 0.15s;
+        }
+
+        .btn-view:hover { background: var(--cyan-dim); }
+
+        .btn-del {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255,61,90,0.3);
+            background: transparent;
+            color: rgba(255,61,90,0.6);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.15s;
+        }
+
+        .btn-del:hover { border-color: var(--red); color: var(--red); background: rgba(255,61,90,0.08); }
+
+        /* ── Empty State ── */
+        .empty {
+            text-align: center;
+            padding: 60px;
+            color: var(--text-dim);
+        }
+
+        .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
+        .empty p { font-size: 13px; }
+
+        /* ── Loading ── */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 30px;
+        }
+
+        .spinner {
+            width: 36px; height: 36px;
+            border: 2px solid var(--border);
+            border-top-color: var(--cyan);
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── Detail Panel (slide from left) ── */
+        .panel-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 500;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .panel-overlay.show { display: block; opacity: 1; }
+
+        .detail-panel {
+            position: fixed;
+            top: 0; left: 0;
+            width: 480px;
+            height: 100vh;
+            background: var(--bg2);
+            border-right: 1px solid var(--border);
+            z-index: 600;
+            overflow-y: auto;
+            transform: translateX(-100%);
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-panel.open { transform: translateX(0); }
+
+        .panel-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            background: var(--bg2);
+            z-index: 10;
+        }
+
+        .panel-header h2 {
+            font-family: var(--font-ui);
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--cyan);
+        }
+
+        .panel-close {
+            width: 32px; height: 32px;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+        }
+
+        .panel-close:hover { border-color: var(--red); color: var(--red); }
+
+        .panel-body { padding: 20px 24px; flex: 1; }
+
+        /* ── Kill Chain Progress ── */
+        .kc-track {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            margin-bottom: 20px;
+            overflow: hidden;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
+        .kc-step {
+            flex: 1;
+            padding: 8px 4px;
+            text-align: center;
+            font-size: 9px;
+            font-family: var(--font-mono);
+            color: var(--text-dim);
+            background: var(--bg3);
+            border-right: 1px solid var(--border);
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .kc-step:last-child { border-right: none; }
+
+        .kc-step.active {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+            font-weight: 700;
+        }
+
+        /* ── Panel Metric Cards ── */
+        .panel-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .metric {
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+        }
+
+        .metric label {
+            font-family: var(--font-mono);
+            font-size: 9px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .metric value {
+            font-family: var(--font-mono);
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--cyan);
+            display: block;
+        }
+
+        /* ── Explanation Box ── */
+        .expl-box {
+            background: var(--bg3);
+            border-left: 3px solid var(--cyan);
+            border-radius: 0 8px 8px 0;
+            padding: 14px 16px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            line-height: 1.7;
+            color: var(--text);
+        }
+
+        /* ── Feature Chips ── */
+        .features-wrap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+
+        .feat-chip {
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(0,212,255,0.25);
+            background: var(--cyan-dim);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--cyan);
+        }
+
+        /* ── Actions List ── */
+        .actions-list { display: flex; flex-direction: column; gap: 6px; }
+
+        .action-item {
+            padding: 10px 14px;
+            background: var(--bg3);
+            border: 1px solid rgba(255,61,90,0.2);
+            border-radius: 6px;
+            font-size: 12px;
+            color: #ff9999;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            line-height: 1.5;
+        }
+
+        /* ── Section Label ── */
+        .section-label {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 8px;
+            display: block;
+        }
+
+        /* ── Toast ── */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg2);
+            border: 1px solid var(--cyan);
+            padding: 10px 18px;
+            border-radius: 6px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--cyan);
+            z-index: 999;
+            display: none;
+            box-shadow: 0 4px 20px rgba(0,212,255,0.2);
+        }
+        
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <div class="logo">
+        <div class="logo-icon">🛡️</div>
+        <div class="logo-text">
+            <h1>Intelligent IDS</h1>
+            <p>HYBRID AUTOENCODER + XGBOOST // 6-CLASS DETECTION</p>
+        </div>
+    </div>
+    <div class="header-right">
+        <div class="status-dot">SYSTEM ONLINE</div>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+    <div class="stat">
+        <div class="stat-val" id="sTot">0</div>
+        <div class="stat-lbl">Total Analyzed</div>
+    </div>
+    <div class="stat">
+        <div class="stat-val red" id="sThr">0</div>
+        <div class="stat-lbl">Threats Detected</div>
+    </div>
+    <div class="stat">
+        <div class="stat-val orange" id="sRisk">0.0</div>
+        <div class="stat-lbl">Avg Risk Score</div>
+    </div>
+    <div class="stat">
+        <div class="stat-val green">81.68%</div>
+        <div class="stat-lbl">Model Accuracy</div>
+    </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+    <!-- Top Row -->
+    <div class="top-row">
+
+        <!-- Upload -->
+        <div class="card">
+            <div class="card-title">📂 Upload Traffic Data</div>
+            <div class="upload-zone" id="uploadZone"
+                 onclick="document.getElementById('fileInput').click()"
+                 ondragover="handleDragOver(event)"
+                 ondragleave="handleDragLeave(event)"
+                 ondrop="handleDrop(event)">
+                <div class="icon">📁</div>
+                <p>Drag & drop CSV or click to browse</p>
+                <small>UNSW-NB15 testing-set format supported</small>
+            </div>
+            <input type="file" id="fileInput" accept=".csv" onchange="handleFileSelect(event)">
+            <div class="file-row">
+                <span class="file-name" id="fileName">No file selected</span>
+                <button class="btn btn-cyan" id="analyzeBtn" style="display:none" onclick="analyzeCSV()">Analyze</button>
+                <button class="btn btn-red" id="clearFileBtn" style="display:none" onclick="clearFile()">✕</button>
+            </div>
+        </div>
+
+        <!-- Simulation -->
+        <div class="card">
+            <div class="card-title">⚡ Live Attack Simulation</div>
+            <div class="sim-grid">
+                <div class="sim-btn dos"      onclick="simulate('dos')">
+                    <span class="dot">🔴</span> DoS
+                    <small>Flood attack</small>
+                </div>
+                <div class="sim-btn exploits" onclick="simulate('exploits')">
+                    <span class="dot">🟠</span> Exploits
+                    <small>Vuln exploit</small>
+                </div>
+                <div class="sim-btn fuzzers"  onclick="simulate('fuzzers')">
+                    <span class="dot">🟡</span> Fuzzers
+                    <small>Malformed data</small>
+                </div>
+                <div class="sim-btn generic"  onclick="simulate('generic')">
+                    <span class="dot">🟣</span> Generic
+                    <small>C&amp;C pattern</small>
+                </div>
+                <div class="sim-btn recon"    onclick="simulate('reconnaissance')">
+                    <span class="dot">🟠</span> Recon
+                    <small>Port scanning</small>
+                </div>
+                <div class="sim-btn normal"   onclick="simulate('normal')">
+                    <span class="dot">🟢</span> Normal
+                    <small>Benign traffic</small>
+                </div>
+            </div>
+            <button class="seq-btn" onclick="simulateSequence()">
+                🎯 SIMULATE FULL KILL CHAIN SEQUENCE
+            </button>
+        </div>
+
+    </div>
+
+    <!-- Charts Row -->
+    <div class="charts-row">
+        <div class="card">
+            <div class="card-title">📊 Attack Distribution</div>
+            <div class="chart-wrap">
+                <canvas id="pieChart"></canvas>
+                <div id="pieEmpty" style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono)">
+                    No data yet
+                </div>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-title">📈 Risk Score Timeline</div>
+            <div class="chart-wrap">
+                <canvas id="lineChart"></canvas>
+                <div id="lineEmpty" style="color:var(--text-dim);font-size:12px;font-family:var(--font-mono)">
+                    No data yet
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <p style="font-family:var(--font-mono);font-size:12px;color:var(--cyan)">Analyzing traffic...</p>
+    </div>
+
+    <!-- Results -->
+    <div class="results-header">
+        <div class="card-title" style="margin:0">📋 Analysis Results</div>
+        <div class="results-actions">
+            <button class="btn btn-ghost" onclick="downloadCSV()">⬇ Export CSV</button>
+            <button class="btn btn-red"   onclick="clearResults()">✕ Clear</button>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Source IP</th>
+                    <th>Prediction</th>
+                    <th>Confidence</th>
+                    <th>Risk Score</th>
+                    <th>Risk Level</th>
+                    <th>Kill Chain</th>
+                    <th>Next Attack</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="resultsBody">
+                <tr><td colspan="9">
+                    <div class="empty">
+                        <div class="empty-icon">🛡️</div>
+                        <p>No traffic analyzed yet — upload a CSV or use simulation</p>
+                    </div>
+                </td></tr>
+            </tbody>
+        </table>
+    </div>
+
+</div>
+
+<!-- Panel Overlay -->
+<div class="panel-overlay" id="panelOverlay" onclick="closePanel()"></div>
+
+<!-- Detail Panel -->
+<div class="detail-panel" id="detailPanel">
+    <div class="panel-header">
+        <h2>🔍 Detailed Analysis</h2>
+        <button class="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body">
+
+        <!-- Kill Chain Track -->
+        <div class="kc-track" id="kcTrack">
+            <div class="kc-step" id="kc-Reconnaissance">Recon</div>
+            <div class="kc-step" id="kc-Weaponization">Weapon</div>
+            <div class="kc-step" id="kc-Exploitation">Exploit</div>
+            <div class="kc-step" id="kc-Command &amp; Control">C&amp;C</div>
+            <div class="kc-step" id="kc-Impact">Impact</div>
+        </div>
+
+        <!-- Metrics -->
+        <div class="panel-metrics">
+            <div class="metric">
+                <label>Prediction</label>
+                <value id="pPred">-</value>
+            </div>
+            <div class="metric">
+                <label>Risk Score</label>
+                <value id="pRisk">-</value>
+            </div>
+            <div class="metric">
+                <label>Confidence</label>
+                <value id="pConf">-</value>
+            </div>
+            <div class="metric">
+                <label>Recon Error</label>
+                <value id="pRecon">-</value>
+            </div>
+            <div class="metric">
+                <label>Next Attack</label>
+                <value id="pNext" style="font-size:13px">-</value>
+            </div>
+            <div class="metric">
+                <label>History Count</label>
+                <value id="pHist">-</value>
+            </div>
+        </div>
+
+        <!-- Explanation -->
+        <span class="section-label">AI Explanation (SHAP)</span>
+        <div class="expl-box" id="pExpl">-</div>
+
+        <!-- Features -->
+        <span class="section-label">Top Features</span>
+        <div class="features-wrap" id="pFeats"></div>
+
+        <!-- Actions -->
+        <span class="section-label">Recommended Actions</span>
+        <div class="actions-list" id="pActions"></div>
+
+    </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ─────────────────────────────────────────────────
+let results = [], total = 0, threats = 0, riskSum = 0;
+let pieChart = null, lineChart = null;
+
+// ── Simulation Data ────────────────────────────────────────
+const SIM = {
+    dos: {
+        dur: 9e-06, proto: 'encap', service: '-', state: 'INT',
+        spkts: 2, dpkts: 0, rate: 111111.1072, sttl: 254, dttl: 0,
+        sload: 88888888.0, dload: 0.0, sinpkt: 0.009, dinpkt: 0.0,
+        sjit: 0.0, djit: 0.0, swin: 0, stcpb: 0, dtcpb: 0,
+        tcprtt: 0.0, synack: 0.0, ackdat: 0.0, smean: 100, dmean: 0,
+        trans_depth: 0, response_body_len: 0, ct_srv_src: 2,
+        ct_state_ttl: 2, ct_dst_ltm: 1, ct_dst_sport_ltm: 1,
+        is_ftp_login: 0, ct_flw_http_mthd: 0, ct_src_ltm: 2,
+        is_sm_ips_ports: 0, source_ip: "10.40.85.30"
+    },
+    exploits: {
+        dur: 0.505999, proto: 'tcp', service: 'http', state: 'FIN',
+        spkts: 12, dpkts: 26, rate: 73.12267, sttl: 62, dttl: 252,
+        sload: 12474.33203, dload: 397328.8125, sinpkt: 45.999909,
+        dinpkt: 17.784881, sjit: 3178.403187, djit: 2219.545984,
+        swin: 255, stcpb: 1381170896, dtcpb: 3232491580,
+        tcprtt: 0.12007, synack: 0.054775, ackdat: 0.065295,
+        smean: 72, dmean: 1005, trans_depth: 1, response_body_len: 12289,
+        ct_srv_src: 1, ct_state_ttl: 1, ct_dst_ltm: 1,
+        ct_dst_sport_ltm: 1, is_ftp_login: 0, ct_flw_http_mthd: 1,
+        ct_src_ltm: 1, is_sm_ips_ports: 0, source_ip: "175.45.176.1"
+    },
+    fuzzers: {
+        dur: 0.67547, proto: 'tcp', service: 'ftp', state: 'FIN',
+        spkts: 12, dpkts: 12, rate: 34.050365, sttl: 254, dttl: 252,
+        sload: 28400.96484, dload: 7414.09668, sinpkt: 61.406365,
+        dinpkt: 52.081363, sjit: 3035.186668, djit: 64.822973,
+        swin: 255, stcpb: 2162593193, dtcpb: 2671705107,
+        tcprtt: 0.162189, synack: 0.101743, ackdat: 0.060446,
+        smean: 218, dmean: 57, trans_depth: 0, response_body_len: 0,
+        ct_srv_src: 3, ct_state_ttl: 1, ct_dst_ltm: 2,
+        ct_dst_sport_ltm: 1, is_ftp_login: 0, ct_flw_http_mthd: 0,
+        ct_src_ltm: 5, is_sm_ips_ports: 0, source_ip: "149.171.126.6"
+    },
+    generic: {
+        dur: 3e-06, proto: 'udp', service: 'dns', state: 'INT',
+        spkts: 2, dpkts: 0, rate: 333333.3215, sttl: 254, dttl: 0,
+        sload: 152000000.0, dload: 0.0, sinpkt: 0.003, dinpkt: 0.0,
+        sjit: 0.0, djit: 0.0, swin: 0, stcpb: 0, dtcpb: 0,
+        tcprtt: 0.0, synack: 0.0, ackdat: 0.0, smean: 57, dmean: 0,
+        trans_depth: 0, response_body_len: 0, ct_srv_src: 22,
+        ct_state_ttl: 2, ct_dst_ltm: 22, ct_dst_sport_ltm: 10,
+        is_ftp_login: 0, ct_flw_http_mthd: 0, ct_src_ltm: 22,
+        is_sm_ips_ports: 0, source_ip: "203.78.12.45"
+    },
+    reconnaissance: {
+        dur: 0.179422, proto: 'tcp', service: 'http', state: 'FIN',
+        spkts: 10, dpkts: 6, rate: 83.601785, sttl: 254, dttl: 252,
+        sload: 35670.09375, dload: 9987.626953, sinpkt: 18.801444,
+        dinpkt: 34.297801, sjit: 1004.215673, djit: 60.206633,
+        swin: 255, stcpb: 4164751767, dtcpb: 3459933746,
+        tcprtt: 0.060319, synack: 0.007924, ackdat: 0.052395,
+        smean: 89, dmean: 45, trans_depth: 1, response_body_len: 0,
+        ct_srv_src: 1, ct_state_ttl: 1, ct_dst_ltm: 1,
+        ct_dst_sport_ltm: 1, is_ftp_login: 0, ct_flw_http_mthd: 1,
+        ct_src_ltm: 1, is_sm_ips_ports: 0, source_ip: "59.166.0.9"
+    },
+    normal: {
+        dur: 0.121478, proto: 'tcp', service: '-', state: 'FIN',
+        spkts: 6, dpkts: 4, rate: 74.08749, sttl: 252, dttl: 254,
+        sload: 14158.94238, dload: 8495.365234, sinpkt: 24.2956,
+        dinpkt: 8.375, sjit: 30.177547, djit: 11.830604,
+        swin: 255, stcpb: 621772692, dtcpb: 2202533631,
+        tcprtt: 0.0, synack: 0.0, ackdat: 0.0, smean: 43, dmean: 43,
+        trans_depth: 0, response_body_len: 0, ct_srv_src: 1,
+        ct_state_ttl: 0, ct_dst_ltm: 1, ct_dst_sport_ltm: 1,
+        is_ftp_login: 0, ct_flw_http_mthd: 0, ct_src_ltm: 1,
+        is_sm_ips_ports: 0, source_ip: "192.168.1.1"
+    }
+};
+
+// ── Colors ─────────────────────────────────────────────────
+const CLASS_COLORS = {
+    dos: '#ff3d5a', exploits: '#ff7043', fuzzers: '#ffd740',
+    generic: '#b388ff', reconnaissance: '#ffaa33', normal: '#00ff88'
+};
+
+const RISK_COLORS = {
+    CRITICAL: '#ff3333', HIGH: '#ff3d5a',
+    MEDIUM: '#ffa726',   LOW: '#ffd740', SAFE: '#00ff88'
+};
+
+// ── Charts ─────────────────────────────────────────────────
+function initCharts() {
+    document.getElementById('pieEmpty').style.display  = 'none';
+    document.getElementById('lineEmpty').style.display = 'none';
+
+    const pieCtx  = document.getElementById('pieChart');
+    const lineCtx = document.getElementById('lineChart');
+
+    pieChart = new Chart(pieCtx, {
+        type: 'doughnut',
+        data: {
+            labels: [],
+            datasets: [{
+                data: [],
+                backgroundColor: [],
+                borderWidth: 2,
+                borderColor: '#0d1220'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: '#5a7090',
+                        font: { family: 'JetBrains Mono', size: 10 },
+                        padding: 12,
+                        boxWidth: 12
+                    }
+                }
+            },
+            cutout: '60%'
+        }
+    });
+
+    lineChart = new Chart(lineCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Risk Score',
+                data: [],
+                borderColor: '#00d4ff',
+                backgroundColor: 'rgba(0,212,255,0.06)',
+                borderWidth: 2,
+                pointBackgroundColor: [],
+                pointRadius: 4,
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    ticks: { color: '#3a5070', font: { size: 9 } },
+                    grid: { color: 'rgba(30,42,64,0.8)' }
+                },
+                y: {
+                    min: 0, max: 10,
+                    ticks: { color: '#3a5070', font: { size: 9 } },
+                    grid: { color: 'rgba(30,42,64,0.8)' }
+                }
+            }
+        }
+    });
+}
+
+function clearFile() {
+    document.getElementById('fileInput').value = '';
+    document.getElementById('fileName').textContent = 'No file selected';
+    document.getElementById('analyzeBtn').style.display = 'none';
+    document.getElementById('clearFileBtn').style.display = 'none';
+}
+
+function updateCharts() {
+    // Pie
+    const counts = {};
+    results.forEach(r => { counts[r.prediction] = (counts[r.prediction] || 0) + 1; });
+    const labels = Object.keys(counts);
+    const data   = Object.values(counts);
+    const colors = labels.map(l => CLASS_COLORS[l] || '#888');
+
+    pieChart.data.labels   = labels.map(l => l.toUpperCase());
+    pieChart.data.datasets[0].data            = data;
+    pieChart.data.datasets[0].backgroundColor = colors;
+    pieChart.update();
+
+    if (labels.length > 0) document.getElementById('pieEmpty').style.display = 'none';
+
+    // Line
+    const last20 = results.slice(-20).reverse();
+    lineChart.data.labels = last20.map((_, i) => `#${i+1}`);
+    lineChart.data.datasets[0].data = last20.map(r => r.risk_score);
+    lineChart.data.datasets[0].pointBackgroundColor = last20.map(r => RISK_COLORS[r.risk_level] || '#888');
+    lineChart.update();
+
+    if (last20.length > 0) document.getElementById('lineEmpty').style.display = 'none';
+}
+
+// ── API ────────────────────────────────────────────────────
+async function callPredict(data) {
+    const r = await fetch('/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!r.ok) throw new Error(`API ${r.status}`);
+    return r.json();
+}
+
+// ── Simulate ───────────────────────────────────────────────
+async function simulate(type) {
+    showLoading(true);
+    try {
+        const result = await callPredict(SIM[type]);
+        addResult(result);
+        toast(`✅ ${type.toUpperCase()} simulation complete`);
+    } catch(e) { toast('❌ ' + e.message); }
+    showLoading(false);
+}
+
+async function simulateSequence() {
+    showLoading(true);
+    toast('🎯 Running kill chain sequence...');
+    for (const t of ['reconnaissance','fuzzers','exploits','dos']) {
+        try {
+            const result = await callPredict({ ...SIM[t], source_ip: '192.168.1.100' });
+            addResult(result);
+            await sleep(600);
+        } catch(e) { console.error(e); }
+    }
+    toast('✅ Kill chain sequence complete!');
+    showLoading(false);
+}
+
+// ── CSV Upload ─────────────────────────────────────────────
+function handleFileSelect(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    document.getElementById('fileName').textContent = f.name;
+    document.getElementById('analyzeBtn').style.display = 'inline-block';
+    document.getElementById('clearFileBtn').style.display = 'inline-block';
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    document.getElementById('uploadZone').classList.add('drag');
+}
+
+function handleDragLeave() {
+    document.getElementById('uploadZone').classList.remove('drag');
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    document.getElementById('uploadZone').classList.remove('drag');
+    const f = e.dataTransfer.files[0];
+    if (f?.name.endsWith('.csv')) {
+        document.getElementById('fileName').textContent = f.name;
+        document.getElementById('analyzeBtn').style.display = 'inline-block';
+        document.getElementById('fileInput').files = e.dataTransfer.files;
+    }
+}
+
+async function analyzeCSV() {
+    const f = document.getElementById('fileInput').files[0];
+    if (!f) return;
+    showLoading(true);
+    toast('📂 Analyzing CSV...');
+    const fd = new FormData();
+    fd.append('file', f);
+    try {
+        const r = await fetch('/analyze-csv', { method: 'POST', body: fd });
+        const d = await r.json();
+        (d.results || []).forEach(r => addResult(r));
+        toast(`✅ Analyzed ${d.results.length} records`);
+    } catch(e) { toast('❌ ' + e.message); }
+    showLoading(false);
+}
+
+// ── Add Result ─────────────────────────────────────────────
+function addResult(result) {
+    total++;
+    if (result.prediction !== 'normal') threats++;
+    riskSum += result.risk_score;
+    results.unshift(result);
+    updateStats();
+    updateCharts();
+    renderRow(result, total);
+}
+
+function renderRow(r, idx) {
+    const tbody = document.getElementById('resultsBody');
+    if (tbody.querySelector('.empty')) tbody.innerHTML = '';
+
+    const rColor = RISK_COLORS[r.risk_level] || '#888';
+    const confPct = (r.confidence * 100).toFixed(1);
+
+    const tr = document.createElement('tr');
+    tr.id = `row-${idx}`;
+    tr.innerHTML = `
+        <td style="color:var(--text-dim);font-family:var(--font-mono);font-size:11px">${idx}</td>
+        <td class="ip">${r.source_ip || 'unknown'}</td>
+        <td><span class="badge b-${r.prediction}">${r.prediction.toUpperCase()}</span></td>
+        <td>
+            <div class="conf-wrap">
+                <div class="conf-bar">
+                    <div class="conf-fill" style="width:${confPct}%;background:${rColor}"></div>
+                </div>
+                <span class="conf-val">${confPct}%</span>
+            </div>
+        </td>
+        <td style="font-family:var(--font-mono);font-weight:700;color:${rColor}">${r.risk_score}</td>
+        <td><span class="badge b-${r.risk_level.toLowerCase()}">${r.risk_level}</span></td>
+        <td style="font-size:12px;color:var(--text-dim)">${r.current_stage}</td>
+        <td style="font-family:var(--font-mono);font-size:11px;color:#ffaa33">
+            ${r.next_attack}
+            <span style="color:var(--text-dim)">(${(r.next_probability*100).toFixed(0)}%)</span>
+        </td>
+        <td>
+            <div class="row-actions">
+                <button class="btn-view" onclick='openPanel(${JSON.stringify(r).replace(/'/g,"&#39;")})'>View</button>
+                <button class="btn-del"  onclick="deleteRow(${idx}, event)">✕</button>
+            </div>
+        </td>
+    `;
+    tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function deleteRow(idx, e) {
+    e.stopPropagation();
+    const row = document.getElementById(`row-${idx}`);
+    if (row) {
+        row.style.opacity = '0';
+        row.style.transition = 'opacity 0.2s';
+        setTimeout(() => row.remove(), 200);
+    }
+}
+
+// ── Detail Panel ───────────────────────────────────────────
+function openPanel(r) {
+    const stages = ['Reconnaissance','Weaponization','Exploitation','Command & Control','Impact'];
+    stages.forEach(s => {
+        const el = document.getElementById('kc-' + s);
+        if (el) el.className = 'kc-step' + (s === r.current_stage ? ' active' : '');
+    });
+
+    const rColor = RISK_COLORS[r.risk_level] || '#888';
+
+    document.getElementById('pPred').textContent  = r.prediction.toUpperCase();
+    document.getElementById('pPred').style.color  = CLASS_COLORS[r.prediction] || '#fff';
+    document.getElementById('pRisk').textContent  = `${r.risk_score} / 10`;
+    document.getElementById('pRisk').style.color  = rColor;
+    document.getElementById('pConf').textContent  = `${(r.confidence*100).toFixed(1)}%`;
+    document.getElementById('pRecon').textContent = r.reconstruction_error || '-';
+    document.getElementById('pNext').textContent  = r.next_attack;
+    document.getElementById('pHist').textContent  = `${r.attack_history_count} attacks`;
+    document.getElementById('pExpl').textContent  = r.explanation;
+
+    document.getElementById('pFeats').innerHTML = (r.top_features || [])
+        .map(f => `<span class="feat-chip">${f}</span>`).join('');
+
+    document.getElementById('pActions').innerHTML = (r.recommended_actions || [])
+        .map(a => `<div class="action-item">⚠️ ${a}</div>`).join('');
+
+    document.getElementById('panelOverlay').classList.add('show');
+    document.getElementById('detailPanel').classList.add('open');
+}
+
+function closePanel() {
+    document.getElementById('panelOverlay').classList.remove('show');
+    document.getElementById('detailPanel').classList.remove('open');
+}
+
+// ── Download CSV ───────────────────────────────────────────
+function downloadCSV() {
+    if (!results.length) { toast('⚠️ No results to export'); return; }
+
+    const headers = [
+        'source_ip','prediction','confidence','risk_score','risk_level',
+        'current_stage','next_attack','next_probability',
+        'reconstruction_error','attack_history_count','explanation'
+    ];
+
+    const rows = results.map(r =>
+        headers.map(h => {
+            const v = r[h] ?? '';
+            return typeof v === 'string' && v.includes(',') ? `"${v}"` : v;
+        }).join(',')
+    );
+
+    const csv  = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `ids_results_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('⬇️ Results exported!');
+}
+
+// ── Clear ──────────────────────────────────────────────────
+function clearResults() {
+    results = []; total = 0; threats = 0; riskSum = 0;
+    document.getElementById('sTot').textContent  = '0';
+    document.getElementById('sThr').textContent  = '0';
+    document.getElementById('sRisk').textContent = '0.0';
+    document.getElementById('resultsBody').innerHTML = `
+        <tr><td colspan="9">
+            <div class="empty">
+                <div class="empty-icon">🛡️</div>
+                <p>No traffic analyzed yet — upload a CSV or use simulation</p>
+            </div>
+        </td></tr>`;
+    closePanel();
+
+    pieChart.data.labels = [];
+    pieChart.data.datasets[0].data = [];
+    pieChart.update();
+    lineChart.data.labels = [];
+    lineChart.data.datasets[0].data = [];
+    lineChart.update();
+    document.getElementById('pieEmpty').style.display = 'block';
+    document.getElementById('lineEmpty').style.display = 'block';
+}
+
+// ── Helpers ────────────────────────────────────────────────
+function updateStats() {
+    document.getElementById('sTot').textContent  = total;
+    document.getElementById('sThr').textContent  = threats;
+    document.getElementById('sRisk').textContent = (riskSum / total).toFixed(1);
+}
+
+function showLoading(v) {
+    document.getElementById('loading').style.display = v ? 'block' : 'none';
+}
+
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    setTimeout(() => t.style.display = 'none', 3000);
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Init ───────────────────────────────────────────────────
+initCharts();
+</script>
+
+<!-- AI Assistant Button -->
+<button id="aiBtn" onclick="toggleAI()" style="
+    position: fixed; bottom: 24px; right: 24px;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #00d4ff, #0088aa);
+    border: none; cursor: pointer; font-size: 22px;
+    box-shadow: 0 4px 20px rgba(0,212,255,0.4);
+    z-index: 800; transition: transform 0.2s;
+" title="Ask AI about cybersecurity">🤖</button>
+
+<!-- AI Chat Panel -->
+<div id="aiPanel" style="
+    position: fixed; bottom: 90px; right: 24px;
+    width: 360px; max-height: 500px;
+    background: #0d1220; border: 1px solid #1e2a40;
+    border-radius: 12px; display: none; flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    z-index: 800; overflow: hidden;
+">
+    <div style="padding:14px 16px; border-bottom:1px solid #1e2a40;
+                display:flex; justify-content:space-between; align-items:center;
+                background:#0a1220">
+        <span style="font-family:'JetBrains Mono';font-size:12px;color:#00d4ff;
+                     font-weight:700">🤖 ARIA — AI ANALYST</span>
+        <button onclick="toggleAI()" style="background:none;border:none;
+                color:#5a7090;cursor:pointer;font-size:16px">✕</button>
+    </div>
+    <div id="aiMessages" style="flex:1; overflow-y:auto; padding:12px;
+                                 max-height:340px; display:flex;
+                                 flex-direction:column; gap:8px;">
+        <div style="background:#12172a; border-left:3px solid #00d4ff;
+                    padding:10px 12px; border-radius:0 6px 6px 0;
+                    font-size:12px; color:#c8d6e8; line-height:1.6">
+            Hi! I'm ARIA — your Advanced Real-time Intrusion Analyst.
+                Ask me about cybersecurity, attack types, or this IDS system!
+        </div>
+    </div>
+    <div style="padding:10px 12px; border-top:1px solid #1e2a40;
+                display:flex; gap:8px;">
+        <input id="aiInput" type="text"
+               placeholder="Ask about DoS, exploits, SHAP..."
+               onkeydown="if(event.key==='Enter') sendAI()"
+               style="flex:1; background:#12172a; border:1px solid #1e2a40;
+                      border-radius:6px; padding:8px 10px; color:#c8d6e8;
+                      font-family:'JetBrains Mono'; font-size:11px;
+                      outline:none;">
+        <button onclick="sendAI()" style="
+            background:#00d4ff; border:none; border-radius:6px;
+            padding:8px 12px; cursor:pointer; font-weight:700;
+            font-size:12px; color:#000;">
+            ➤
+        </button>
+    </div>
+</div>
+
+<script>
+function toggleAI() {
+    const p = document.getElementById('aiPanel');
+    p.style.display = p.style.display === 'flex' ? 'none' : 'flex';
+    p.style.flexDirection = 'column';
+    if (p.style.display === 'flex')
+        document.getElementById('aiInput').focus();
+}
+
+async function sendAI() {
+    const input = document.getElementById('aiInput');
+    const msg   = input.value.trim();
+    if (!msg) return;
+
+    input.value = '';
+    addAIMsg(msg, 'user');
+    const typing = addAIMsg('Thinking...', 'bot', true);
+
+    try {
+        const res  = await fetch('/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: msg })
+        });
+        const data = await res.json();
+        typing.remove();
+        addAIMsg(data.response, 'bot');
+    } catch(e) {
+        typing.remove();
+        addAIMsg('Error connecting to AI.', 'bot');
+    }
+}
+
+function addAIMsg(text, role, isTemp=false) {
+    const msgs = document.getElementById('aiMessages');
+    const div  = document.createElement('div');
+    div.style.cssText = role === 'user'
+        ? 'background:#1a2a3a;padding:8px 12px;border-radius:6px 6px 0 6px;font-size:12px;color:#00d4ff;text-align:right;font-family:JetBrains Mono;line-height:1.5'
+        : 'background:#12172a;border-left:3px solid #00d4ff;padding:8px 12px;border-radius:0 6px 6px 0;font-size:12px;color:#c8d6e8;line-height:1.6;font-family:JetBrains Mono';
+    div.textContent = text;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div;
+}
+</script>
+
+</body>
+</html>
