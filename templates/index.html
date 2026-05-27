@@ -1165,7 +1165,7 @@ async function simulate(type) {
 async function simulateSequence() {
     showLoading(true);
     toast('🎯 Running kill chain sequence...');
-    for (const t of ['reconnaissance','fuzzers','exploits','dos']) {
+    for (const t of ['reconnaissance', 'fuzzers', 'exploits', 'generic', 'dos']) {
         try {
             const result = await callPredict({ ...SIM[t], source_ip: '192.168.1.100' });
             addResult(result);
